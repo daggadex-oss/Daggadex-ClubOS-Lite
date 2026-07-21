@@ -219,3 +219,86 @@ Full in-browser visual check of the layouts, and the "member hits
 `pnpm dev` smoke test of `/login`, `docs/PROGRESS.md` Day 1 summary,
 `CLAUDE.md` updates (auth model, courier/no-order-contents note, new
 schema columns), commit, then stop before pushing.
+
+---
+
+## Phase F — Verify and hand back (Day 1 summary)
+
+**Day 1 built, end to end:**
+- **Schema:** catalogue compatibility (`brands` table + RLS, potency
+  columns, `substance_class`, `grade_declared`, `cultivation` on
+  `products`/`product_types` — Phase A), applied and live.
+- **Auth:** email magic link, not phone OTP — `/login`, `/auth/callback`,
+  `/auth/signout`, `/pending`, abstracted behind `src/lib/auth.ts`
+  (Phase C), backed by three Supabase clients — browser, server, admin
+  with a proven build-time + runtime guard (Phase B).
+- **Access control:** middleware session gate + role-based redirects,
+  cached `{ member, club }` helper for Server Components (Phase D).
+- **UI:** member layout (bottom nav, mobile-first) and admin layout
+  (sidebar, desktop-first), placeholder pages for every nav destination,
+  `pnpm bootstrap` to create the first owner (Phase E).
+- All on branch `sprint/mvp`, nothing merged to `main` or pushed yet.
+
+**Files touched this sprint (all under `sprint/mvp`):**
+- `supabase/migrations/20260721125918_catalogue_compatibility.sql`,
+  `src/lib/database.types.ts`
+- `src/lib/supabase/{client,server,admin}.ts`
+- `src/lib/auth.ts`, `src/app/login/page.tsx`,
+  `src/app/auth/{callback,signout}/route.ts`, `src/app/pending/page.tsx`,
+  `src/components/ui/{button,input}.tsx`
+- `src/middleware.ts`, `src/lib/session.ts`
+- `src/app/(member)/{layout,menu/page,orders/page,account/page}.tsx`,
+  `src/app/admin/{layout,page,orders/page,products/page,members/page}.tsx`,
+  `scripts/bootstrap-owner.ts`
+- `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
+  `.env.local.example`, `CLAUDE.md`, `docs/PROGRESS.md`
+
+**Decisions made without the founder, in order:**
+1. `/auth/signout` is POST, not GET (CSRF/prefetch safety).
+2. `/pending` includes a sign-out link (otherwise a wrong-email member
+   has no way out of the loop).
+3. Left `signInWithOtp`'s default `shouldCreateUser: true` — access
+   control lives at the `members` gate, not at sign-up.
+4. Public-path check in middleware runs before any Supabase call, so
+   `/login`/`/auth/*` pay zero auth-check cost.
+5. `staff`/`owner` are not blocked from member routes (`/menu`,
+   `/orders`, `/account`) — spec said what to allow per role, not what
+   to wall off.
+6. Added `tsx` as a devDependency for `pnpm bootstrap` — Node's native
+   `--experimental-strip-types` can't resolve the `@/*` path alias used
+   inside `admin.ts` without a bundler-aware loader, and duplicating the
+   service-role client to dodge a dependency seemed worse.
+7. `pnpm bootstrap` passes `--conditions=react-server` to `tsx` so
+   `admin.ts`'s `server-only` import resolves the same way it does under
+   Next.js, instead of changing that file.
+
+**Deferred / not yet testable (needs the founder):**
+- Real magic-link email delivery, end to end, on a real handset.
+- "Member hitting `/admin` → `/menu`" — needs a real logged-in member;
+  logged-out redirects were verified directly.
+- Full visual check of the member bottom nav and admin sidebar in a
+  live session (build-time static rendering was verified; live
+  in-browser render with real data was not).
+- Running `pnpm bootstrap <your-email>` itself — needs a real
+  `auth.users` row, which needs a completed magic-link login first.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean on the final
+tree. `pnpm dev` starts cleanly and `/login` renders correctly with no
+console or server errors.
+
+**Commands to run yourself, in order:**
+```bash
+cd ~/projects/daggadex-clubos
+git push -u origin sprint/mvp        # first push of this branch
+```
+Then, in the browser: open `/login`, request a magic link, click it on
+your phone. Once logged in (you'll land on `/pending` — no `members` row
+yet), run:
+```bash
+pnpm bootstrap you@example.com
+```
+Refresh — you should now land on `/admin` as the owner.
+
+**Next session starts with:** Day 2. `sprint/mvp` is one commit ahead of
+`main` in every way that matters, but not merged — that's the founder's
+call after testing the real login on a handset.
