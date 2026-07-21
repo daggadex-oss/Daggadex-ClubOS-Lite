@@ -82,13 +82,17 @@ export type Database = {
         Row: {
           club_id: string
           confirmed_at: string | null
+          courier_reference: string | null
           created_at: string
           delivered_at: string | null
           delivery_fee_cents: number
           delivery_notes: string | null
           delivery_zone: string | null
+          dispatched_at: string | null
           id: string
           member_id: string
+          payment_confirmed_at: string | null
+          payment_notes: string | null
           payment_status: string
           requested_at: string
           status: string
@@ -99,13 +103,17 @@ export type Database = {
         Insert: {
           club_id: string
           confirmed_at?: string | null
+          courier_reference?: string | null
           created_at?: string
           delivered_at?: string | null
           delivery_fee_cents?: number
           delivery_notes?: string | null
           delivery_zone?: string | null
+          dispatched_at?: string | null
           id?: string
           member_id: string
+          payment_confirmed_at?: string | null
+          payment_notes?: string | null
           payment_status?: string
           requested_at?: string
           status?: string
@@ -116,13 +124,17 @@ export type Database = {
         Update: {
           club_id?: string
           confirmed_at?: string | null
+          courier_reference?: string | null
           created_at?: string
           delivered_at?: string | null
           delivery_fee_cents?: number
           delivery_notes?: string | null
           delivery_zone?: string | null
+          dispatched_at?: string | null
           id?: string
           member_id?: string
+          payment_confirmed_at?: string | null
+          payment_notes?: string | null
           payment_status?: string
           requested_at?: string
           status?: string
