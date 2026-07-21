@@ -119,3 +119,46 @@ console errors.
 **Next phase starts with:** Phase D — middleware + role routing
 (`src/lib/session.ts` cached helper, session/member/club resolution,
 redirect rules for `member` vs `staff`/`owner`).
+
+---
+
+## Phase D — Middleware and role routing
+
+**Built:**
+- `src/middleware.ts` — runs on every route except `/login` and
+  `/auth/*` (checked first, before any Supabase call, so those routes
+  pay zero auth-check cost). Follows the documented `@supabase/ssr`
+  cookie-refresh pattern exactly (no code between `createServerClient`
+  and `getUser()`; redirect responses carry over the refreshed cookies).
+  Redirect rules: no session → `/login`; no `members` row or
+  `status != 'active'` → `/pending`; `member` role hitting `/admin/*` or
+  `/` → `/menu`; `staff`/`owner` hitting `/` → `/admin`.
+- `src/lib/session.ts` — `getSessionContext()`, wrapped in React
+  `cache()` so any number of Server Components in one render share a
+  single `members` query instead of each re-querying.
+
+**Files touched:**
+- `src/middleware.ts` (new)
+- `src/lib/session.ts` (new)
+
+**Decisions made:**
+- Public-path check happens before the Supabase client is even created,
+  not after — `/login`/`/auth/*` traffic does zero auth work, rather
+  than calling `getUser()` and discarding the result.
+- Didn't restrict `staff`/`owner` from the member routes (`/menu`,
+  `/orders`, `/account`) — spec only said what to *allow* for each
+  role, not to wall staff out of member surfaces. Left permissive.
+
+**Deferred:** The "member hitting `/admin` → `/menu`" half of the
+Definition of Done isn't testable yet — there's no real logged-in member
+until the bootstrap script (Phase E) creates one and the founder
+completes a real magic-link login (Phase F). Logged-out redirects for
+`/admin`, `/menu`, and `/` were verified directly in-browser.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` both clean, middleware
+shows in the build's route table. Logged-out requests to `/admin`,
+`/menu`, and `/` all land on `/login`; no server errors.
+
+**Next phase starts with:** Phase E — member layout (bottom nav),
+admin layout (sidebar), placeholder pages for every nav destination,
+and `scripts/bootstrap-owner.ts`.
