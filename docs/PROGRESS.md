@@ -162,3 +162,60 @@ shows in the build's route table. Logged-out requests to `/admin`,
 **Next phase starts with:** Phase E — member layout (bottom nav),
 admin layout (sidebar), placeholder pages for every nav destination,
 and `scripts/bootstrap-owner.ts`.
+
+---
+
+## Phase E — Layouts and bootstrap script
+
+**Built:**
+- `src/app/(member)/layout.tsx` — mobile-first, bottom nav (Menu →
+  `/menu`, Requests → `/orders`, Account → `/account`), 44px tap
+  targets, `base` background, Anton wordmark.
+- `src/app/(member)/{menu,orders,account}/page.tsx` — placeholders,
+  each describes what's coming (not "TODO").
+- `src/app/admin/layout.tsx` — desktop sidebar (Dashboard/Orders/
+  Products/Members) plus a POST-form sign-out control.
+- `src/app/admin/{page,orders,products,members}/page.tsx` —
+  placeholders, same treatment.
+- `scripts/bootstrap-owner.ts` (`pnpm bootstrap <email>`) — finds the
+  `auth.users` row by email (exits with a clear message if absent),
+  creates the club from `BOOTSTRAP_CLUB_NAME`/`BOOTSTRAP_CLUB_SLUG` (or
+  the "Demo Club"/"demo-club" defaults) if missing, creates or fixes up
+  the owner `members` row, idempotent, never prints secrets.
+
+**Files touched:** all under `src/app/(member)/`, `src/app/admin/`,
+plus `scripts/bootstrap-owner.ts`, `.env.local.example` (added the two
+`BOOTSTRAP_*` vars with placeholder values), `package.json` /
+`pnpm-lock.yaml` / `pnpm-workspace.yaml`.
+
+**Decisions made:**
+- Tried Node's native `--experimental-strip-types` first to avoid a new
+  dependency, but its ESM loader can't resolve the `@/*` path alias used
+  inside `src/lib/supabase/admin.ts` without a bundler. Rather than
+  duplicate the service-role client just to dodge a dependency, added
+  `tsx` as a devDependency — it's the standard fix for "TS + path
+  aliases in a standalone script."
+- `admin.ts`'s `import "server-only"` throws under plain Node unless the
+  `react-server` export condition is set — `pnpm bootstrap` passes
+  `--conditions=react-server` to `tsx` to match how Next.js itself
+  resolves that package, rather than touching the Phase B file.
+- Left `staff`/`owner` free to view `/menu`/`/orders`/`/account` (same
+  call as Phase D — spec said what to allow, not what to block).
+
+**Deferred:** Nothing from the brief.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean; all 13 routes
+appear in the build output, and every authenticated-area page
+(`/menu`, `/orders`, `/account`, `/admin`, `/admin/orders`,
+`/admin/products`, `/admin/members`) statically pre-rendered with no
+errors. `pnpm bootstrap` (no args) prints usage and exits 1; `pnpm
+bootstrap nobody-yet@example.com` correctly reports no matching
+`auth.users` row and exits 1 — no writes attempted in either case.
+Full in-browser visual check of the layouts, and the "member hits
+`/admin` → `/menu`" middleware case, both wait on a real login
+(Phase F / the founder's own testing).
+
+**Next phase starts with:** Phase F — final `tsc`/`build` check, one
+`pnpm dev` smoke test of `/login`, `docs/PROGRESS.md` Day 1 summary,
+`CLAUDE.md` updates (auth model, courier/no-order-contents note, new
+schema columns), commit, then stop before pushing.
