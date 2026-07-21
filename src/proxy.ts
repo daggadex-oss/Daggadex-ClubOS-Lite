@@ -5,7 +5,7 @@ function isPublicPath(pathname: string) {
   return pathname === "/login" || pathname.startsWith("/auth/");
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
