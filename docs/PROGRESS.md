@@ -33,3 +33,38 @@ clean.
 **Next phase starts with:** Phase B — three Supabase clients in
 `src/lib/supabase/` (browser, server, admin). Working on branch
 `sprint/mvp`, not yet pushed to remote.
+
+---
+
+## Phase B — Supabase clients
+
+**Built:** Three clients in `src/lib/supabase/`:
+- `client.ts` — browser client via `createBrowserClient`.
+- `server.ts` — async server client via `createServerClient`, using the
+  documented `getAll`/`setAll` cookie pattern for Server Components, Route
+  Handlers and Server Actions.
+- `admin.ts` — service-role client. `import "server-only"` as the first
+  line, plus a top-level `typeof window !== "undefined"` throw as a
+  second, redundant guard. Comment states it bypasses every RLS policy.
+
+**Files touched:**
+- `src/lib/supabase/client.ts` (new)
+- `src/lib/supabase/server.ts` (new)
+- `src/lib/supabase/admin.ts` (new)
+- `package.json`, `pnpm-lock.yaml` — added `@supabase/ssr`,
+  `@supabase/supabase-js`, `server-only`.
+
+**Decisions made:** None outside what was specified.
+
+**Deferred:** Nothing.
+
+**Verified:** Built a throwaway client component that imported
+`createAdminClient` and ran `pnpm build` — confirmed Turbopack hard-fails
+the build with "'server-only' cannot be imported from a Client Component
+module" (test page deleted afterward, never committed). `pnpm tsc --noEmit`
+and `pnpm build` both clean on the real tree.
+
+**Next phase starts with:** Phase C — email magic link auth (`/login`,
+`/auth/callback`, `/auth/signout`, `/pending`, `src/lib/auth.ts`). Note:
+this replaces the phone-OTP auth described in `CLAUDE.md` at the time —
+`CLAUDE.md` gets updated to match in Phase F.
