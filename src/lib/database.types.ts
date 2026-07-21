@@ -159,6 +159,38 @@ export type Database = {
           },
         ]
       }
+      brands: {
+        Row: {
+          club_id: string | null
+          created_at: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brands_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clubs: {
         Row: {
           created_at: string
@@ -337,32 +369,42 @@ export type Database = {
           description: string | null
           name: string
           sort_order: number
+          substance_class: string
         }
         Insert: {
           code: string
           description?: string | null
           name: string
           sort_order?: number
+          substance_class?: string
         }
         Update: {
           code?: string
           description?: string | null
           name?: string
           sort_order?: number
+          substance_class?: string
         }
         Relationships: []
       }
       products: {
         Row: {
           active: boolean
+          brand_id: string | null
           club_id: string
           created_at: string
+          cultivation: string | null
           description: string | null
+          grade_declared: string | null
           id: string
           image_url: string | null
           is_new_drop: boolean
           is_staff_pick: boolean
           name: string
+          potency_amount: number | null
+          potency_basis: string | null
+          potency_compound: string | null
+          potency_unit: string | null
           product_type_code: string
           tier: string | null
           updated_at: string
@@ -370,14 +412,21 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          brand_id?: string | null
           club_id: string
           created_at?: string
+          cultivation?: string | null
           description?: string | null
+          grade_declared?: string | null
           id?: string
           image_url?: string | null
           is_new_drop?: boolean
           is_staff_pick?: boolean
           name: string
+          potency_amount?: number | null
+          potency_basis?: string | null
+          potency_compound?: string | null
+          potency_unit?: string | null
           product_type_code: string
           tier?: string | null
           updated_at?: string
@@ -385,20 +434,34 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          brand_id?: string | null
           club_id?: string
           created_at?: string
+          cultivation?: string | null
           description?: string | null
+          grade_declared?: string | null
           id?: string
           image_url?: string | null
           is_new_drop?: boolean
           is_staff_pick?: boolean
           name?: string
+          potency_amount?: number | null
+          potency_basis?: string | null
+          potency_compound?: string | null
+          potency_unit?: string | null
           product_type_code?: string
           tier?: string | null
           updated_at?: string
           variety_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_club_id_fkey"
             columns: ["club_id"]
