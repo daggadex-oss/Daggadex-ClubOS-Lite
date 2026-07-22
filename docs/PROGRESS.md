@@ -373,3 +373,123 @@ out-of-stock visibly disabled not hidden), product detail, client-side
 basket with no DB writes until submit, the `b2c_transactions` +
 snapshotted items submit flow, and `/orders` history. Copy throughout:
 "Request"/"Reserve"/"Donation", never "Buy"/"Checkout"/"Price".
+
+---
+
+## Day 2 — Member menu and request flow
+
+**Success criterion from the brief:** place a real order from a phone
+and have it land as structured rows. The submit path itself is proven
+end to end (tested directly against the live DB — see below); the
+full phone walkthrough still needs the founder's real session, same
+constraint as Day 1's login test.
+
+**Built:**
+- `create_order()` Postgres function (new migration,
+  `20260722224853_create_order_function.sql`) — atomically inserts one
+  `b2c_transactions` row plus its `b2c_transaction_items`, looking up
+  price/name/unit server-side from live `product_prices`/`products`
+  rather than trusting client-submitted values. No `SECURITY DEFINER`
+  — runs as the calling role so the existing RLS policies
+  (`txn_member_insert`, `txn_items_insert`) remain the real
+  authorization gate; the function's only job is atomicity and
+  server-side pricing. Tested directly (insert → verify → cleanup)
+  against the live database before any UI was built on top of it.
+- `src/lib/data/menu.ts` — `getMenuSections()` (whole catalogue,
+  grouped by `product_type`, embeds variety/brand/prices),
+  `getMenuProduct()` (single product for the detail page).
+- `src/lib/data/orders.ts` — `getMemberOrders()`, embeds line items.
+- `src/lib/basket-context.tsx` — React Context, keyed by
+  `product_price_id` (not `product_id`, since a member can have both
+  a 2g and a 10g of the same strain as two separate lines). Pure
+  client state; nothing here touches the database.
+- `src/lib/actions/orders.ts` — `submitOrder()` Server Action, calls
+  the `create_order` RPC with `{product_price_id, quantity}` pairs
+  only (never price).
+- `/menu` (`menu-browser.tsx`) — sections by product type, chips for
+  All / New Drops / Staff Picks / each type present. Out-of-stock
+  products shown at reduced opacity with a label, not removed from
+  the list.
+- `/menu/[id]` (`product-detail.tsx`) — strain type, grade,
+  cultivation, potency (formatted via `src/lib/sell-unit.ts`), price
+  point picker with individual out-of-stock buttons disabled (not the
+  whole product), quantity stepper, add-to-basket.
+- `/menu/review` (`basket-review.tsx`) — editable basket, delivery
+  notes, non-blocking warning under the club's `min_order_cents`,
+  submit button wired to the Server Action.
+- `/orders` (`order-list.tsx`) — status badges mapped to the design
+  tokens' documented status→color table exactly (requested=sage,
+  confirmed=olive, out_for_delivery=gold, delivered=cream-on-surface,
+  cancelled=wood).
+- Floating basket bar (`basket-bar.tsx`) in the member layout, hidden
+  on the review page itself and whenever the basket is empty.
+
+**Files touched:**
+- `supabase/migrations/20260722224853_create_order_function.sql` (new)
+- `src/lib/database.types.ts` (regenerated)
+- `src/lib/data/{menu,orders}.ts`, `src/lib/basket-context.tsx`,
+  `src/lib/actions/orders.ts`, `src/lib/money.ts`,
+  `src/lib/sell-unit.ts` (new)
+- `src/components/{menu-browser,product-detail,basket-review,
+  basket-bar,order-list}.tsx` (new)
+- `src/app/(member)/menu/page.tsx` (rewritten from placeholder),
+  `src/app/(member)/menu/[id]/page.tsx`,
+  `src/app/(member)/menu/review/page.tsx` (new),
+  `src/app/(member)/orders/page.tsx` (rewritten from placeholder),
+  `src/app/(member)/layout.tsx` (wraps children in `BasketProvider`,
+  adds the basket bar above the bottom nav)
+
+**Decisions made without the founder, in order:**
+1. Added a new migration for `create_order()` rather than doing the
+   two inserts as separate REST calls — the brief explicitly requires
+   "in a single transaction," which PostgREST can't do across two
+   `.insert()` calls.
+2. The RPC takes only `{product_price_id, quantity}` from the client
+   and looks up price/name/unit itself — not specified in the brief,
+   but a client-supplied price would be a real integrity gap given
+   the basket is pure client state, and it's a more literal reading of
+   "snapshot... at order time" than trusting a possibly-stale
+   client-side cache anyway.
+3. "Warn under `min_order_cents`" read as informational, not blocking
+   — the warning shows but submission is not prevented. If the intent
+   was a hard minimum, that's a one-line change in
+   `basket-review.tsx` (disable the submit button when
+   `belowMinimum`).
+4. `p_delivery_zone`/`p_delivery_notes` are passed as `""` rather than
+   `null` when unset — Supabase's generated RPC arg types are
+   non-nullable `string` regardless of the underlying column's
+   nullability, and both are just informational text, so this seemed
+   a reasonable compromise over touching the SQL signature.
+5. Basket keyed by `product_price_id`: a 2g and a 10g of the same
+   strain are two independent basket lines, not merged.
+6. No delivery fee calculation — `delivery_fee_cents` stays at its
+   schema default (0) on submit. The plan doesn't specify a formula
+   and delivery routing/fees are explicitly out of scope for the MVP.
+
+**Deferred:**
+- Full phone/browser walkthrough of the actual flow (browse → add →
+  review → submit → see it in `/orders`) — every new route sits
+  behind the auth middleware, so this needs the founder's real
+  session, same as Day 1's login test. The `create_order` RPC itself
+  was verified directly against the live database (not through the
+  UI) before any UI was built on it.
+- New Drops / Staff Picks filters will currently show empty states —
+  the seed script didn't set `is_new_drop`/`is_staff_pick` on any
+  product (a data/admin concern, not a Day 2 bug); Day 3's "light
+  admin" scope doesn't mention toggling these either, so flagging for
+  whenever that gets added.
+- No product images — the seed has no `image_url` values (no
+  photography assets exist yet). Cards/detail render fine without
+  them; out of scope to fake placeholder images.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean, all 5 new
+routes appear in the build output. `create_order()` tested directly
+against the live database: correct atomic insert, correct
+server-computed subtotal/line totals, cleaned up after. Logged-out
+requests to `/menu` still correctly redirect to `/login` with no
+server errors (regression check on Day 1's middleware).
+
+**Next session starts with:** Founder tests the real flow on a
+handset (browse → add to basket → review → submit → see it land in
+`/orders`), then Day 3 — order queue, fulfilment status transitions,
+realtime, light admin (edit price / toggle stock / toggle active).
