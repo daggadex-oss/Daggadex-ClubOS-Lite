@@ -560,6 +560,18 @@ export type Database = {
         }
         Returns: string
       }
+      update_order_status: {
+        Args: { p_new_status: string; p_transaction_id: string }
+        Returns: undefined
+      }
+      update_payment_status: {
+        Args: {
+          p_payment_notes: string
+          p_payment_status: string
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
