@@ -493,3 +493,112 @@ server errors (regression check on Day 1's middleware).
 handset (browse → add to basket → review → submit → see it land in
 `/orders`), then Day 3 — order queue, fulfilment status transitions,
 realtime, light admin (edit price / toggle stock / toggle active).
+
+---
+
+## Day 3 — Order queue, fulfilment, light admin
+
+**Success criterion from the brief:** two phones side by side — order
+placed on one, appears live on the other. The realtime mechanism
+itself is enabled and wired up; the actual two-phone test still needs
+the founder (same live-session constraint as every prior day).
+
+**Built:**
+- Migration `20260722230333_order_transitions_and_realtime.sql`:
+  - `update_order_status()` — enforces the fulfilment state machine
+    server-side: `requested → confirmed → out_for_delivery →
+    delivered`, sequential only; cancel allowed from any non-terminal
+    state. Stamps `confirmed_at`/`dispatched_at`/`delivered_at`. No
+    `SECURITY DEFINER` — same approach as Day 2's `create_order`, RLS
+    stays the real gate.
+  - `update_payment_status()` — sets `payment_status`/`payment_notes`,
+    stamps `payment_confirmed_at` the first time an order is marked
+    paid.
+  - `alter publication supabase_realtime add table b2c_transactions`.
+  - All three verified directly against the live database before any
+    UI was built: valid transitions apply and stamp correctly; an
+    invalid transition (`requested` → `delivered`, skipping states)
+    is rejected with the expected error, and — because the whole test
+    ran as one `DO` block — the failed transaction's *creation* rolled
+    back too, confirming no partial state is possible either way.
+- `/admin/orders` (`order-queue.tsx`) — status-column queue (newest
+  first within each column), member alias, item summary, total,
+  delivery zone, time waiting (recomputed every 30s so it doesn't go
+  stale on screen). Subscribes to Supabase Realtime on
+  `b2c_transactions` filtered to the club; on any insert/update it
+  re-fetches that one row (with items and member alias embedded, which
+  the raw realtime payload doesn't carry) and merges it into local
+  state. Transition buttons are context-sensitive to the current
+  status; Cancel asks for confirmation first (the state machine has no
+  reverse transition, so it's effectively irreversible). Payment
+  status/notes editable inline. `wa.me` link to the member carries only
+  a short order reference and status label — never item contents,
+  extending the courier-privacy principle to the member-facing message
+  too.
+- `/admin/products` (`product-editor.tsx`) — light admin exactly as
+  scoped: editable price per price point (rand input, saves on blur),
+  stock status select, product active toggle, plain client-side name
+  filter (not a typeahead — no suggestions, just narrows the already-
+  loaded list). No new RLS needed; the existing
+  `products_staff_write`/`prices_staff_write` "for all" policies
+  already cover these updates for staff of the correct club.
+
+**Files touched:**
+- `supabase/migrations/20260722230333_order_transitions_and_realtime.sql`
+  (new), `src/lib/database.types.ts` (regenerated)
+- `src/lib/data/admin-orders-shared.ts` (new — see bug note below),
+  `src/lib/data/admin-orders.ts`, `src/lib/data/admin-products.ts` (new)
+- `src/lib/actions/admin-orders.ts`, `src/lib/actions/admin-products.ts`
+  (new)
+- `src/components/admin/order-queue.tsx`,
+  `src/components/admin/product-editor.tsx` (new)
+- `src/app/admin/orders/page.tsx`, `src/app/admin/products/page.tsx`
+  (rewritten from placeholders)
+
+**A real bug the build caught (not me):** `order-queue.tsx` (a client
+component) imported `ADMIN_ORDER_SELECT` — a runtime string constant,
+not a type — from `admin-orders.ts`, which also contains server-only
+code (`next/headers`). That pulled the entire server module into the
+client bundle and `pnpm build` failed with a clear import-trace error.
+Fixed by splitting the shared types/constant into a new
+`admin-orders-shared.ts` with zero server-only imports, and having
+both the server data layer and the client component import from
+there instead of from each other.
+
+**Decisions made without the founder, in order:**
+1. Cancel is irreversible in the state machine (no path back from
+   `cancelled`) — not stated explicitly, but implied by only listing
+   forward transitions plus cancel. Added a native `confirm()` prompt
+   before the Cancel button fires, since accidentally cancelling a
+   real member's order would be a real annoyance even though it's not
+   destructive at the data level.
+2. Historical columns (Delivered, Cancelled) are capped at the 10 most
+   recent orders in the UI — the queue metaphor is about active orders;
+   nothing in the brief calls for unbounded history here, and Day 4's
+   dashboard is explicitly where historical/aggregate data belongs.
+3. Payment notes save on blur from an always-visible text input rather
+   than a separate edit mode — simplest thing that satisfies "plus
+   free-text payment_notes" without a second UI surface.
+4. Realtime re-fetches the full row per event instead of trying to
+   patch state from the raw payload — the payload only carries
+   `b2c_transactions` columns, not the embedded member alias or items
+   the card needs to render.
+
+**Deferred:**
+- The actual two-phone realtime test — needs the founder's real
+  session on the admin side and a real member request on the other.
+- Per the brief's own cut list, the member `wa.me` link and the
+  waiting counter are the first things to drop if time runs short —
+  both are built, so nothing to revisit unless time pressure hits
+  later and they need to come back out.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean (after fixing
+the client/server boundary bug above), all new routes appear in the
+build output. All three new RPC functions tested directly against the
+live database. Logged-out requests to `/admin/orders` still correctly
+redirect to `/login` with no server errors (regression check).
+
+**Next session starts with:** Founder tests the realtime queue and
+light admin for real, then Day 4 — demo seed script (~60 days of
+plausible historical orders), `/admin/dashboard` with Postgres-side
+aggregation, CSV export, PWA pass, merge to `main`, rehearsal.
