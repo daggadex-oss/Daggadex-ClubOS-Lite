@@ -302,3 +302,74 @@ Refresh — you should now land on `/admin` as the owner.
 **Next session starts with:** Day 2. `sprint/mvp` is one commit ahead of
 `main` in every way that matters, but not merged — that's the founder's
 call after testing the real login on a handset.
+
+---
+
+## Sprint plan v2 — catalogue seed (Day 1 step 7, done late)
+
+The founder brought a v2 sprint plan (supersedes v1): email magic link
+confirmed as the permanent auth choice (not a placeholder), courier
+explicitly modeled as a non-user, and a real catalogue seed for Day 1
+step 7 that hadn't been run yet. Also set up a `.claude` PreToolUse hook
+(`hooks/wsl-command-gate.sh`) so routine `wsl`-wrapped commands stop
+prompting for approval while `git push`/`supabase db push`/`rm` still
+do — the existing blanket `Bash(wsl -e *)` rule that would have silently
+defeated this was found and removed first.
+
+**Built:** Ran `supabase/seed_catalogue.sql` — 249 products, 620 price
+points, 129 varieties, 25 brands, sourced from a real 8-page club menu.
+The founder's script had three bugs against the live schema (all
+verified via live `information_schema`/`pg_constraint` queries before
+touching anything):
+- `varieties` insert never set `slug` (NOT NULL, no default) and used
+  `on conflict (name)`, but only `slug` is unique — fixed by generating
+  a slug from the strain name and conflicting on that instead.
+- `strain_type` used `I`/`S`/`H`; the live CHECK only allows
+  `indica`/`sativa`/`hybrid`/`unknown` — mapped at insert time.
+- `product_prices.sell_unit` used `g`/`unit`; the live CHECK only
+  allows `gram`/`joint`/`device`/`pack`/`each`/`ml` — mapped once at
+  the two `product_prices` INSERT...SELECT statements (not scattered
+  across ~40 literal values in the staging data) using the exact
+  convention the original schema migration's own comments documented:
+  flower→gram, preroll→joint, vape/dab hardware→device, everything
+  else generic→each.
+
+**Files touched:**
+- `supabase/seed_catalogue.sql` (new — corrected version, committed;
+  original DML, not a schema migration, so it lives outside
+  `supabase/migrations/`)
+- `C:\Users\ivarr\.claude\settings.json` (PreToolUse hook), `hooks/wsl-command-gate.sh`
+  (new), `C:\Users\ivarr\.claude\settings.local.json` (removed the
+  blanket `wsl -e *` allow rule) — these are harness config outside the
+  repo, not committed to git.
+
+**Decisions made:**
+- Fixed the seed script's bugs rather than running it as-is and letting
+  it fail — all three fixes are grounded in constraints the schema
+  already documents (either literal CHECK values or the schema's own
+  comments), not judgment calls invented on the spot.
+- Ran the seed via `supabase db query --file`, not `supabase db push` —
+  this is data (DML), not a schema change, so it doesn't belong in
+  `supabase/migrations/`.
+
+**Deferred:** Promotional/special pricing (section 11 of the seed) —
+no `price_type` column exists yet, so specials are recorded as SQL
+comments only, not rows. Flagged as a future schema decision, not made
+here.
+
+**Verified:** Post-run entity counts (249/620/129/25) match a hand
+calculation of the staging data exactly — each band's price ladder
+correctly multiplies across every strain in that band, ruling out
+duplication from the LIKE-based product↔band join. Spot-checked that
+`sell_unit` and `strain_type` columns contain only valid values
+live — no leaked `g`/`unit`/`I`/`S`/`H`. The PreToolUse hook was
+pipe-tested against 6 scenarios and proven to fire live (a real
+`wsl -e bash -lc 'true'` ran with zero prompt) before the sentinel
+prefix was removed.
+
+**Next session starts with:** Actual Day 2 build work per the v2 plan —
+`/menu` (grouped by type, filter chips, New Drops/Staff Picks,
+out-of-stock visibly disabled not hidden), product detail, client-side
+basket with no DB writes until submit, the `b2c_transactions` +
+snapshotted items submit flow, and `/orders` history. Copy throughout:
+"Request"/"Reserve"/"Donation", never "Buy"/"Checkout"/"Price".
