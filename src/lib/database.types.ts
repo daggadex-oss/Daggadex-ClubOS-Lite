@@ -550,6 +550,16 @@ export type Database = {
     Functions: {
       app_current_club_id: { Args: never; Returns: string }
       app_is_staff: { Args: never; Returns: boolean }
+      create_order: {
+        Args: {
+          p_club_id: string
+          p_delivery_notes: string
+          p_delivery_zone: string
+          p_items: Json
+          p_member_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
