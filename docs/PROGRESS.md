@@ -602,3 +602,136 @@ redirect to `/login` with no server errors (regression check).
 light admin for real, then Day 4 — demo seed script (~60 days of
 plausible historical orders), `/admin/dashboard` with Postgres-side
 aggregation, CSV export, PWA pass, merge to `main`, rehearsal.
+
+---
+
+## Day 4 — Dashboard, PWA, rehearsal prep
+
+**Success criterion from the brief:** run the whole demo start to
+finish without notes. Everything through the PWA pass is built and
+verified; the actual rehearsal is the founder's own job, always was.
+
+**Built:**
+- `supabase/seed_demo_orders.sql` — 18 fictional members (no login,
+  same shape as invite-before-signup) and ~156 historical orders across
+  the last 60 days, weighted busier on Fri/Sat, ~a third of members
+  treated as "regulars" for a meaningful repeat-share number. Dry-
+  tested with a rollback-instead-of-commit copy first, caught and fixed
+  one bug that way (ambiguous `id` column between `product_prices` and
+  `products`) before ever touching live data.
+- Migration `20260723083622_dashboard_aggregation.sql`:
+  - Fixed `v_price_intelligence`'s `tier` column — it read
+    `products.tier`, which the catalogue seed never populated
+    (`grade_declared`/`cultivation` carry that instead, added *after*
+    this view was originally defined in the Day 0 schema). Now falls
+    back through `tier → cultivation → grade_declared`.
+  - Six new aggregation functions (`get_dashboard_summary`,
+    `get_orders_per_day`, `get_top_products`, `get_category_split`,
+    `get_price_per_gram_by_tier`, `get_order_timing_heatmap`) — all
+    `language sql stable`, no `SECURITY DEFINER`, same RLS-stays-the-
+    gate philosophy as every prior RPC.
+  - Caught by testing against the real seeded data, not by inspection:
+    `get_price_per_gram_by_tier` initially mixed real cultivation tiers
+    (indoor/greenhouse/outdoor) with concentrate grade labels (Crumble,
+    Budder, Cured Hash Rosin...) because those products are *also*
+    gram-priced and picked up the same coalesce'd `tier` column through
+    `grade_declared`. Fixed by scoping the function to
+    `product_type = 'Flower'` specifically. Since the migration wasn't
+    committed yet, fixed in place rather than leaving the bug in for a
+    follow-up patch.
+  - All six functions tested directly against the live seeded data
+    before any UI was built on them.
+- `/admin` dashboard: four stat tiles (revenue, orders, average basket,
+  repeat-member share) each with a period-over-period delta; orders-
+  per-day bar chart with hover detail; top products and category split
+  as ranked bar lists; price-per-gram by cultivation tier; an hour ×
+  day-of-week order timing heatmap (the brief's own "cut if late" item
+  — built anyway since it followed the same pattern cheaply). Per-panel
+  CSV export throughout.
+- **Consulted the dataviz skill before writing any chart code.** This
+  palette is deliberately minimal — most of its seven colors are
+  reserved for non-chart UI (gold must stay scarce, wood is cancelled-
+  state only, per `docs/design-tokens.md`) — leaving no room for a
+  proper colorblind-safe categorical set. Rather than force 5+ distinct
+  hues into a 7-color brand palette, every chart uses one sequential hue
+  (olive): bar length/opacity encodes magnitude, labels carry identity.
+  Sidesteps the categorical-palette problem instead of compromising on
+  it. All charts are plain HTML/CSS/SVG — no charting library added.
+- PWA pass: `manifest.ts` (Next.js special file), 192/512px icons
+  generated at request time via `next/og`'s `ImageResponse` (no image
+  assets, no new dependency), `apple-icon.tsx` for the iOS home screen
+  icon via the same mechanism, a hand-written service worker
+  (`public/sw.js`) that intercepts only page navigations and falls back
+  to a static `/offline` page — deliberately never caches API responses
+  or dynamic pages, since a stale cached menu/order status would be
+  actively misleading for a data-critical app — and a dismissible iOS
+  "Add to Home Screen" tooltip (no `beforeinstallprompt` event exists
+  on iOS Safari, so there's no standard install banner to hook).
+
+**A real bug, caught by testing rather than the build:** the auth
+middleware was gating the manifest, both icon routes, the service
+worker file, and the offline page themselves — a logged-out request
+for any of them got redirected to `/login` instead of the actual
+asset, which would have silently broken PWA installability entirely.
+Caught by navigating to `/manifest.webmanifest` in the browser and
+getting a login page back instead of JSON. Fixed by adding all five to
+`proxy.ts`'s public-path allowlist.
+
+**Files touched:**
+- `supabase/seed_demo_orders.sql` (new)
+- `supabase/migrations/20260723083622_dashboard_aggregation.sql` (new),
+  `src/lib/database.types.ts` (regenerated)
+- `src/lib/data/dashboard.ts`, `src/lib/csv.ts` (new)
+- `src/components/admin/{stat-tile,bar-list,orders-chart,
+  timing-heatmap,export-button}.tsx` (new)
+- `src/app/admin/page.tsx` (rewritten from placeholder)
+- `src/app/manifest.ts`, `src/app/apple-icon.tsx`,
+  `src/app/icon-192/route.tsx`, `src/app/icon-512/route.tsx`,
+  `src/app/offline/page.tsx` (new)
+- `public/sw.js`, `src/components/service-worker-registration.tsx`,
+  `src/components/ios-install-tooltip.tsx` (new)
+- `src/app/layout.tsx` (appleWebApp metadata, viewport theme-color,
+  wires in the two new components), `src/proxy.ts` (public-path fix)
+
+**Decisions made without the founder, in order:**
+1. Demo member phone numbers and aliases are obviously fake
+   (`+2782...`, "Demo Member NN") and tagged for idempotent cleanup —
+   not stated explicitly, but needed so a re-run never touches real
+   accounts or real orders, and so the founder can tell at a glance
+   which members are fictional.
+2. `get_price_per_gram_by_tier` scoped to Flower only — see the bug
+   note above; this is a correctness fix, not a scope decision, but
+   flagging it since it changes what the function returns from what a
+   first read of the brief might expect.
+3. The dashboard's chart palette uses a single hue throughout rather
+   than distinct categorical colors — a deliberate, documented
+   deviation from "give each category its own color," justified by the
+   brand palette's own explicit constraints (see above).
+4. Service worker deliberately does *not* implement a full offline-
+   first cache strategy (no caching of the menu, prices, or order data)
+   — correctness over completeness for a data-critical app; an
+   "offline mode" that shows stale prices would be worse than no
+   offline mode.
+5. iOS install tooltip persists dismissal in `localStorage`, not a per-
+   session flag — once dismissed, it stays dismissed on that device.
+
+**Deferred:**
+- The rehearsal itself (three timed run-throughs) — inherently the
+  founder's job, not something to automate or verify remotely.
+- Merging `sprint/mvp` to `main` — held back as a separate, explicit
+  step (see below): it's a materially different action from every
+  other push this sprint, since `main` is wired to Vercel's
+  **production** deployment, not a preview.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean (after fixing
+the middleware bug above). All 6 aggregation functions and the seed
+script tested directly against live data before any UI was built.
+Manifest, both icon routes, the offline page, and the service worker
+all confirmed reachable without a session; service worker confirmed
+registered and active in-browser. Logged-out `/admin` still correctly
+redirects to `/login`.
+
+**Next steps:** founder reviews the accumulated four days of work
+(proposed as a PR rather than a direct merge, given the size and that
+`main` deploys to production), decides when to merge, then rehearses
+the demo end to end on real phones per the brief's own instructions.
