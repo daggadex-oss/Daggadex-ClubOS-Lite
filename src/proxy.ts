@@ -1,8 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// PWA assets must be reachable without a session: the manifest, icons,
+// and service worker are fetched by the browser/OS itself (no cookies
+// in the relevant sense), and the offline fallback page specifically
+// exists for when a request can't be authenticated at all.
+const PUBLIC_EXACT_PATHS = new Set([
+  "/login",
+  "/manifest.webmanifest",
+  "/icon-192",
+  "/icon-512",
+  "/apple-icon",
+  "/offline",
+  "/sw.js",
+]);
+
 function isPublicPath(pathname: string) {
-  return pathname === "/login" || pathname.startsWith("/auth/");
+  return PUBLIC_EXACT_PATHS.has(pathname) || pathname.startsWith("/auth/");
 }
 
 export async function proxy(request: NextRequest) {
