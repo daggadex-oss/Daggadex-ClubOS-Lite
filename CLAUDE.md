@@ -45,9 +45,17 @@ Key conventions, all deliberate:
 - `price_history` is populated by a database trigger. Do not write to it
   from application code.
 - Status fields are `text` + CHECK constraint, not Postgres enums.
+- `b2c_transactions` also carries delivery/payment-confirmation tracking:
+  `payment_notes` (text), `payment_confirmed_at` (timestamptz),
+  `dispatched_at` (timestamptz), `courier_reference` (text) — all
+  nullable, no indexes yet (query shapes aren't known).
 
 ## Auth and access
-- Supabase Auth, phone OTP.
+- Supabase Auth, **email magic link** (not phone OTP). Phone auth needs a
+  third-party SMS provider plus SA sender-ID registration — out of scope
+  for this sprint. The sign-in call is abstracted behind
+  `requestSignIn()` in `src/lib/auth.ts` specifically so this can change
+  later without touching callers.
 - A `members` row links `auth.users.id` to a club with a role
   (`member` / `staff` / `owner`).
 - `members.user_id` is nullable to support invite-before-signup.
@@ -57,6 +65,12 @@ Key conventions, all deliberate:
   RLS. The `service_role` key must NEVER be imported into a client
   component or exposed to the browser. If a task seems to need it
   client-side, the design is wrong — stop and tell me.
+- The courier is explicitly **not** a system user — no auth account, no
+  `members` row, no login. Delivery handoff happens outside the app
+  (e.g. a `wa.me` message with an address). That handoff must never
+  include order contents — only logistics (address, zone, delivery
+  notes, `courier_reference`). What's actually in the order stays on the
+  club-facing surface.
 
 ## Design system
 Colours, type and tokens are in `docs/design-tokens.md`. Use the named Tailwind
