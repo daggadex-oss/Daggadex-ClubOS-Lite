@@ -560,6 +560,59 @@ export type Database = {
         }
         Returns: string
       }
+      get_category_split: {
+        Args: { p_club_id: string; p_days?: number }
+        Returns: {
+          orders: number
+          revenue_cents: number
+          substance_class: string
+        }[]
+      }
+      get_dashboard_summary: {
+        Args: { p_club_id: string; p_period_days?: number }
+        Returns: {
+          current_avg_basket_cents: number
+          current_orders: number
+          current_repeat_share: number
+          current_revenue_cents: number
+          previous_avg_basket_cents: number
+          previous_orders: number
+          previous_repeat_share: number
+          previous_revenue_cents: number
+        }[]
+      }
+      get_order_timing_heatmap: {
+        Args: { p_club_id: string; p_days?: number }
+        Returns: {
+          day_of_week: number
+          hour_of_day: number
+          orders: number
+        }[]
+      }
+      get_orders_per_day: {
+        Args: { p_club_id: string; p_days?: number }
+        Returns: {
+          day: string
+          orders: number
+          revenue_cents: number
+        }[]
+      }
+      get_price_per_gram_by_tier: {
+        Args: { p_club_id: string }
+        Returns: {
+          avg_price_per_gram_cents: number
+          product_count: number
+          tier: string
+        }[]
+      }
+      get_top_products: {
+        Args: { p_club_id: string; p_days?: number; p_limit?: number }
+        Returns: {
+          product_name: string
+          revenue_cents: number
+          units: number
+        }[]
+      }
       update_order_status: {
         Args: { p_new_status: string; p_transaction_id: string }
         Returns: undefined
