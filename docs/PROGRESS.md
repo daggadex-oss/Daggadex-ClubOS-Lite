@@ -735,3 +735,182 @@ redirects to `/login`.
 (proposed as a PR rather than a direct merge, given the size and that
 `main` deploys to production), decides when to merge, then rehearses
 the demo end to end on real phones per the brief's own instructions.
+
+---
+
+## Phase G — Catalogue metadata, club tiers, and modular product attributes
+
+**Built:** Implemented the proposal in `docs/phase-g-catalogue-metadata.md`
+in full. Two migrations, a DML seed, and the schema-driven "Add Product"
+admin form the plan's own "Next phase starts with" section called for.
+
+- Migration `20260724134952_catalogue_metadata_and_tiers.sql`:
+  - `effects` (global lookup) + `variety_effects` (join table, attached to
+    `varieties` not `products` — same reasoning as the plan doc). Same RLS
+    shape as the existing `product_types`/`varieties` taxonomy tables
+    (any authenticated user reads, only staff write).
+  - `club_tiers` (per-club, `unique(club_id, rank)` + `unique(club_id, name)`)
+    and `products.club_tier_id` FK. RLS mirrors `products`/`product_prices`
+    (club-scoped read, staff write).
+  - `product_type_attribute_schemas` — drives the type-specific fields on
+    the Add Product form. RLS mirrors `product_types` (global, staff write).
+  - `products.base_unit_price_cents` (nullable reference rate) and
+    `products.attributes jsonb not null default '{}'`.
+  - `v_price_intelligence` extended with `base_unit_price_cents` and a
+    read-time `discount_pct` — see Decisions below for why this isn't a
+    stored column.
+- Migration `20260724141040_create_product_function.sql`:
+  `create_product_with_prices()` — atomic product + price-point insert.
+  Same pattern as Day 2's `create_order()`: no `SECURITY DEFINER`, RLS
+  (`products_staff_write`/`prices_staff_write`) stays the real
+  authorization gate, the function's only job is atomicity.
+- `supabase/seed_attribute_schemas.sql` (new, DML — lives outside
+  `supabase/migrations/` like the other seed files) — 4 illustrative
+  attribute-schema rows (`edible`: dosage_mg, servings_per_package;
+  `vape-disposable`: device_type, battery_included), idempotent
+  (`on conflict ... do nothing`).
+- `src/lib/data/admin-products.ts` — added `getProductFormOptions()`
+  (product types, varieties, club-scoped tiers, attribute schemas).
+- `src/lib/actions/admin-products.ts` — added `createProduct()`, calling
+  the new RPC.
+- `src/components/admin/add-product-form.tsx` (new) — product type →
+  name → strain (variety) picker with read-only strain-type display →
+  cultivation/grade/potency → club tier → type-specific fields rendered
+  from `product_type_attribute_schemas` (text/number/boolean/select/
+  multiselect) → optional base unit rate → package builder (add/remove
+  price points, live client-side discount-vs-base preview per row) →
+  submit. Plain HTML controls styled with the existing design tokens,
+  matching `product-editor.tsx`'s established convention — no new shadcn
+  components or dependencies added.
+- `src/app/admin/products/page.tsx` — fetches `getProductFormOptions()`
+  alongside the existing product list, renders the new form above the
+  existing editor.
+
+**Files touched:**
+- `supabase/migrations/20260724134952_catalogue_metadata_and_tiers.sql`,
+  `supabase/migrations/20260724141040_create_product_function.sql` (new)
+- `supabase/seed_attribute_schemas.sql` (new)
+- `src/lib/database.types.ts` (regenerated, twice — once per migration)
+- `src/lib/data/admin-products.ts`, `src/lib/actions/admin-products.ts`
+- `src/components/admin/add-product-form.tsx` (new)
+- `src/app/admin/products/page.tsx`
+- `docs/phase-g-catalogue-metadata.md` (the plan doc itself, added to the
+  repo — it existed only outside the repo when this session started)
+
+**Decisions made:**
+1. `product_prices`' quantity/weight columns confirmed live as
+   `sell_unit`/`sell_quantity` (matches `00000000000000_schema.sql`) —
+   the one thing the plan doc explicitly flagged as unconfirmed.
+2. The plan's `product_type_attribute_schemas.product_type_id FK` was
+   wrong — `product_types`' primary key is `code` (text), not a synthetic
+   `id`. Corrected to `product_type_code`, matching the existing
+   `products.product_type_code` convention. Caught by checking live
+   `information_schema`, not by re-reading the plan more carefully.
+3. `discount_pct` is **not** a stored/generated column. A generated
+   column can't reference another table's row (Postgres restriction), and
+   a trigger-based store would go stale the moment
+   `products.base_unit_price_cents` changes after price points already
+   exist. Computed at read time in `v_price_intelligence` instead — same
+   treatment `price_per_unit_cents` already gets, and directly matches
+   this project's own stated principle in `docs/HANDOFF.md`: "never store
+   a derived number that could be computed from source data."
+4. Effects are global only for v1 (no per-club override) — the plan's own
+   stated default, not overridden.
+5. No GIN index on `products.attributes` yet — same call Phase A made for
+   its own new columns; no real query pattern against it exists yet.
+6. Added `create_product_with_prices()` as a new migration rather than two
+   sequential `.insert()` calls from the Server Action — not explicitly
+   requested, but `product-editor.tsx` only edits price/stock on rows that
+   already exist, it has no "add a price point" UI, so a partial insert
+   (product lands, prices fail) would leave a genuinely stuck orphan
+   product with no way to fix it from the app. Tested directly against
+   live data (happy path + the empty-prices failure path) before any UI
+   was built on it, same discipline as every prior RPC.
+7. Added "product type" and "name" as required first fields even though
+   the plan's literal flow ("strain picker → core fields → tier picker →
+   type fields → package builder") didn't list either — both are
+   `not null` columns with no default; the form can't submit without them,
+   and type-specific fields can't render before the type is known.
+8. Left `brand_id`, `is_new_drop`, `is_staff_pick`, `description`, and
+   `image_url` out of the Add Product form — not in the plan's field
+   list, and `docs/HANDOFF.md` already separately scopes "full product
+   CRUD" as its own future item. Adding them here would be scope creep
+   past what either document asked for.
+9. Seeded 4 illustrative `product_type_attribute_schemas` rows via a new
+   DML file rather than leaving the table empty — makes the "form renders
+   itself from the schema" behavior something you can actually click
+   through and see (`edible`/`vape-disposable` fields appear, `flower`
+   doesn't), not just a structurally-correct table with nothing in it.
+   Not a full attribute taxonomy — four rows, chosen to match the plan
+   doc's own two examples.
+10. Worked on a new branch (`feature/phase-g-catalogue-metadata`, off
+    `main`) rather than reusing `sprint/mvp` or committing to `main`
+    directly — confirmed with the founder first, since `main` and
+    `sprint/mvp` were identical (already merged) and `docs/HANDOFF.md`
+    itself says to check before reusing either.
+11. `create_product_with_prices()`'s generated Supabase RPC arg types came
+    back non-nullable for every optional param (the same `supabase gen
+    types` gap Day 2's `create_order()` call hit). Day 2's fix — pass `""`
+    instead of `null` — doesn't generalize here: an empty string would
+    fail the `cultivation` CHECK constraint outright and fail uuid/numeric
+    parsing for the rest. Passed real `null` and overrode the incorrect
+    generated type via an explicit intermediate type + `unknown` cast,
+    documented inline, rather than corrupting the insert to satisfy the
+    type checker.
+
+**Deferred:**
+- No admin UI to create/browse effects or tag a variety's effects — those
+  are variety-level (see the plan doc's own reasoning), which is a future
+  variety editor, not something the Add Product form should own.
+- No admin UI to author `product_type_attribute_schemas` rows — only the
+  4 seeded examples exist; an admin authoring surface for these is future
+  work, same as the plan doc's own scoping implied.
+- No admin UI to create/rename/reorder `club_tiers` — the live club has
+  none yet, so the Add Product form's tier picker will show only the "no
+  tier" option until some exist.
+- Real interactive click-through of the Add Product form in a logged-in
+  staff session — needs the founder's real magic-link login, the same
+  constraint every single prior phase (C through Day 4) hit and deferred
+  for the same reason.
+- Promotional/special pricing (`price_type`) — unrelated to this phase,
+  already flagged in Day 4's Known Gaps, still unaddressed.
+
+**Verified:**
+- Live schema confirmed via `information_schema`/`pg_get_viewdef` *before*
+  writing either migration — `product_prices` column shapes,
+  `product_types`' actual primary key, the live (Day-4-fixed)
+  `v_price_intelligence` definition, and no naming collisions with any of
+  the 4 new tables.
+- Both migrations dry-run (`supabase db push --dry-run`), shown to the
+  founder, explicitly confirmed, then pushed — not run unilaterally.
+- Post-push: all 4 new tables + 3 new `products` columns confirmed live
+  via `information_schema`; RLS confirmed enabled
+  (`pg_class.relrowsecurity = true`) on all 4 new tables.
+- Functional smoke test against live data: inserted a real effect,
+  variety_effect, club_tier, and attribute-schema row; set
+  `base_unit_price_cents = 15000` on a real seeded flower product (4 real
+  price points); `discount_pct` in `v_price_intelligence` matched a hand
+  calculation exactly (0%, 8.33%, 5.56%, 10.00%) — including a 2g row a
+  first, narrower query missed, caught by re-running without the `limit`.
+  All test data deleted afterward, re-queried to confirm zero leftovers.
+- `create_product_with_prices()` tested directly against live data before
+  any UI touched it: happy path (product + 2 price points + jsonb
+  attributes) landed correctly and matched on read-back; failure path
+  (empty `p_prices` array) correctly raised and wrote zero rows. Both
+  cleaned up, confirmed zero leftovers.
+- `pnpm tsc --noEmit` and `pnpm build` both clean; `/admin/products`
+  appears in the build's route table.
+- Dev server started via the project's own `daggadex-clubos` preview
+  config; logged-out request to `/admin/products` still correctly
+  redirects to `/login` with no console errors (regression check).
+- **Not verified:** the Add Product form's actual in-browser behavior
+  behind a real staff login — blocked on the same magic-link constraint
+  as every prior phase's UI verification.
+
+**Next phase starts with:** Founder logs in for real and exercises the
+Add Product form end to end — a flower product with a strain and a tier,
+then an edible or vape product to confirm the type-specific fields
+render, save, and round-trip through `products.attributes` correctly.
+After that: an admin surface for club_tiers/effects/attribute-schema
+authoring (all currently SQL-only), or Day 4's still-open
+promotional/special pricing gap — founder's call on priority.
