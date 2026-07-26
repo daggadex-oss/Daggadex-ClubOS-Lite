@@ -786,9 +786,36 @@ admin form the plan's own "Next phase starts with" section called for.
   alongside the existing product list, renders the new form above the
   existing editor.
 
+**A real bug caught by real-session testing (not by me, and not new to
+Phase G):** submitting the Add Product form failed with `new row violates
+row-level security policy for table "price_history"`. `price_history` has
+RLS enabled with only a staff-only `SELECT` policy — no `INSERT` policy
+exists at all, on any table, for anyone. The trigger that populates it
+(`log_price_change()`, fires on every `product_prices` insert/update) runs
+with the privileges of the invoking role, not elevated privileges, so any
+authenticated-role write to `product_prices` was always going to hit this.
+This predates Phase G entirely — every `product_prices` row until this
+moment was written by seed scripts running as the service role (which
+bypasses RLS, including the trigger's insert), so it never surfaced. This
+was, literally, the first real end-to-end write this project has ever
+made through PostgREST/RLS with a genuine logged-in staff session rather
+than a seed script — Days 1 through 4 all explicitly deferred that exact
+kind of verification to "the founder's real session" and never closed the
+loop on it until now. Fixed in
+`supabase/migrations/20260726151100_fix_price_history_rls.sql`: marked
+`log_price_change()` `SECURITY DEFINER`, the same pattern already used by
+`app_current_club_id()`/`app_is_staff()` to bypass RLS for internal
+bookkeeping that isn't itself a direct user-facing write path.
+`price_history`'s own read policy (staff-only) is untouched and remains
+the real gate on who can query the history. This also unblocks the
+pre-existing price editor (`product-editor.tsx`'s `updatePriceCents`),
+which had the identical latent bug and had likewise never been exercised
+in a real session before.
+
 **Files touched:**
 - `supabase/migrations/20260724134952_catalogue_metadata_and_tiers.sql`,
-  `supabase/migrations/20260724141040_create_product_function.sql` (new)
+  `supabase/migrations/20260724141040_create_product_function.sql`,
+  `supabase/migrations/20260726151100_fix_price_history_rls.sql` (new)
 - `supabase/seed_attribute_schemas.sql` (new)
 - `src/lib/database.types.ts` (regenerated, twice — once per migration)
 - `src/lib/data/admin-products.ts`, `src/lib/actions/admin-products.ts`
@@ -868,10 +895,6 @@ admin form the plan's own "Next phase starts with" section called for.
 - No admin UI to create/rename/reorder `club_tiers` — the live club has
   none yet, so the Add Product form's tier picker will show only the "no
   tier" option until some exist.
-- Real interactive click-through of the Add Product form in a logged-in
-  staff session — needs the founder's real magic-link login, the same
-  constraint every single prior phase (C through Day 4) hit and deferred
-  for the same reason.
 - Promotional/special pricing (`price_type`) — unrelated to this phase,
   already flagged in Day 4's Known Gaps, still unaddressed.
 
@@ -903,14 +926,30 @@ admin form the plan's own "Next phase starts with" section called for.
 - Dev server started via the project's own `daggadex-clubos` preview
   config; logged-out request to `/admin/products` still correctly
   redirects to `/login` with no console errors (regression check).
-- **Not verified:** the Add Product form's actual in-browser behavior
-  behind a real staff login — blocked on the same magic-link constraint
-  as every prior phase's UI verification.
+- **Real click-through, done for real:** pushed the branch, opened
+  [PR #2](https://github.com/daggadex-oss/Daggadex-ClubOS-Lite/pull/2),
+  tested on its Vercel preview deploy in a genuine logged-in staff
+  session — the first phase in this project where that constraint
+  actually got closed instead of deferred again. Caught two real issues
+  live: the number-input min-bound UX gap (fixed, see below) and the
+  `price_history` RLS bug (see "A real bug..." above, fixed in a third
+  migration). After both fixes, added a real product ("POP POM" — flower,
+  Apple Slushie strain, indoor, AA grade, 25% THC concentration, R150
+  base rate, one price point at 1g/R89) through the actual form and
+  confirmed it end to end via live query: product row correct, price
+  point correct, and — the specific thing the RLS fix needed to prove —
+  a real `price_history` row was written by the authenticated session
+  itself, not just by a service-role script.
+- Also fixed, from the same live testing: number inputs
+  (`add-product-form.tsx`) had no `min` bound, so clicking the spinner
+  arrows on an empty field could step to a negative value. Client-side
+  validation and the DB `CHECK` constraints already rejected negative
+  submissions, so this was UX-only, not a data-integrity gap — fixed by
+  adding `min` to every numeric field.
 
-**Next phase starts with:** Founder logs in for real and exercises the
-Add Product form end to end — a flower product with a strain and a tier,
-then an edible or vape product to confirm the type-specific fields
-render, save, and round-trip through `products.attributes` correctly.
-After that: an admin surface for club_tiers/effects/attribute-schema
-authoring (all currently SQL-only), or Day 4's still-open
-promotional/special pricing gap — founder's call on priority.
+**Next phase starts with:** club_tiers/effects/attribute-schema authoring
+currently only exist via direct SQL — an admin surface for at least
+`club_tiers` (the Add Product form's tier picker is empty for every club
+until one exists) is the most immediately useful next piece. After that,
+Day 4's still-open promotional/special pricing gap — founder's call on
+priority. PR #2 is open against `main`, not yet merged.
