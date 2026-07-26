@@ -111,3 +111,13 @@
     @apply font-sans;
   }
 }
+
+/* Hides scrollbars on the paged menu's horizontal carousel and per-band
+   weight-ladder rows — Tailwind has no built-in utility for this. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

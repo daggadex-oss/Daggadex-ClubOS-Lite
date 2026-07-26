@@ -1,12 +1,12 @@
 import { getSessionContext } from "@/lib/session";
-import { getMenuSections } from "@/lib/data/menu";
+import { getMenuPages } from "@/lib/data/menu";
 import { MenuBrowser } from "@/components/menu-browser";
 
 export default async function MenuPage() {
   const session = await getSessionContext();
   if (!session) return null; // middleware already guarantees a session here
 
-  const sections = await getMenuSections(session.club.id);
+  const pages = await getMenuPages(session.club.id);
 
-  return <MenuBrowser sections={sections} />;
+  return <MenuBrowser pages={pages} />;
 }
