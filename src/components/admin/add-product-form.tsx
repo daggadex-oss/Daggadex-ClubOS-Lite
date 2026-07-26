@@ -266,6 +266,7 @@ export function AddProductForm({
           <input
             type="number"
             step="0.001"
+            min="0"
             value={potencyAmount}
             onChange={(e) => setPotencyAmount(e.target.value)}
             placeholder="Amount"
@@ -396,6 +397,7 @@ export function AddProductForm({
                 ) : (
                   <input
                     type={schema.input_type === "number" ? "number" : "text"}
+                    min={schema.input_type === "number" ? "0" : undefined}
                     value={(attributeValues[schema.attribute_key] as string) ?? ""}
                     onChange={(e) =>
                       setAttributeValues((prev) => ({
@@ -419,6 +421,7 @@ export function AddProductForm({
         <input
           type="number"
           step="0.01"
+          min="0"
           value={baseUnitPriceRand}
           onChange={(e) => setBaseUnitPriceRand(e.target.value)}
           placeholder="150.00"
@@ -450,6 +453,7 @@ export function AddProductForm({
               <input
                 type="number"
                 step="0.001"
+                min="0.001"
                 value={row.sellQuantity}
                 onChange={(e) => updatePriceRow(row.key, { sellQuantity: e.target.value })}
                 placeholder="Qty"
@@ -458,6 +462,7 @@ export function AddProductForm({
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 value={row.priceRand}
                 onChange={(e) => updatePriceRow(row.key, { priceRand: e.target.value })}
                 placeholder="R price"
