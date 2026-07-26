@@ -953,3 +953,53 @@ currently only exist via direct SQL — an admin surface for at least
 until one exists) is the most immediately useful next piece. After that,
 Day 4's still-open promotional/special pricing gap — founder's call on
 priority. PR #2 is open against `main`, not yet merged.
+
+---
+
+### Addendum — club_tiers admin UI
+
+**Built:** `ClubTiersEditor` (`src/components/admin/club-tiers-editor.tsx`),
+wired into `/admin/products` above the Add Product form. Inline edit-on-
+blur for name/rank per tier (same pattern as `product-editor.tsx`), a
+"Remove" action with a confirm prompt (safe — `products.club_tier_id` is
+`on delete set null`, not cascade), and an add-tier row defaulting to the
+next unused rank. Plain single-table CRUD, no new migration — `club_tiers`
+already had full RLS (`club_tiers_read`/`club_tiers_staff_write`) covering
+select/insert/update/delete for staff of the club.
+
+**Files touched:**
+- `src/lib/data/admin-tiers.ts`, `src/lib/actions/admin-tiers.ts` (new)
+- `src/components/admin/club-tiers-editor.tsx` (new)
+- `src/app/admin/products/page.tsx` (fetches tiers, renders the editor)
+
+**Decisions made:**
+- New per-feature files (`admin-tiers.ts`) rather than folding into
+  `admin-products.ts` — matches this project's existing convention of one
+  data/action file per admin feature (`admin-orders.ts` vs
+  `admin-products.ts` are already separate despite both being "admin").
+- `router.refresh()` after every tier mutation — `ClubTiersEditor` and
+  `AddProductForm` are siblings fed by the same Server Component
+  (`page.tsx`), so a new/renamed tier needs to reach the Add Product
+  form's picker, not just its own local optimistic state.
+- Delete is a hard delete, not a soft/active toggle — unlike products
+  (which get an `active` flag because orders reference them historically),
+  nothing references `club_tiers` except `products.club_tier_id`, which is
+  `on delete set null`, so removing a tier can't orphan or corrupt
+  anything.
+
+**Deferred:** Nothing scoped in for this addendum. `effects`/
+`variety_effects` and `product_type_attribute_schemas` authoring are still
+SQL-only.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean, `/admin/products`
+still in the route table. Confirmed live the club has zero `club_tiers`
+rows currently (so the editor's empty state is what actually renders,
+not a hypothetical). RLS itself isn't independently re-verified here —
+`club_tiers_staff_write` is structurally identical to
+`products_staff_write`/`prices_staff_write`, which the POP POM test above
+already proved work correctly in a real staff session.
+
+**Next phase starts with:** Founder tests tier creation/rename/reorder/
+delete for real on the PR #2 preview, then confirms a tier actually
+appears in and can be picked from the Add Product form's tier picker in
+the same session.
