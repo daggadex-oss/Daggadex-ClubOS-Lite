@@ -735,3 +735,291 @@ redirects to `/login`.
 (proposed as a PR rather than a direct merge, given the size and that
 `main` deploys to production), decides when to merge, then rehearses
 the demo end to end on real phones per the brief's own instructions.
+
+---
+
+## Phase G — Catalogue metadata, club tiers, and modular product attributes
+
+**Built:** Implemented the proposal in `docs/phase-g-catalogue-metadata.md`
+in full. Two migrations, a DML seed, and the schema-driven "Add Product"
+admin form the plan's own "Next phase starts with" section called for.
+
+- Migration `20260724134952_catalogue_metadata_and_tiers.sql`:
+  - `effects` (global lookup) + `variety_effects` (join table, attached to
+    `varieties` not `products` — same reasoning as the plan doc). Same RLS
+    shape as the existing `product_types`/`varieties` taxonomy tables
+    (any authenticated user reads, only staff write).
+  - `club_tiers` (per-club, `unique(club_id, rank)` + `unique(club_id, name)`)
+    and `products.club_tier_id` FK. RLS mirrors `products`/`product_prices`
+    (club-scoped read, staff write).
+  - `product_type_attribute_schemas` — drives the type-specific fields on
+    the Add Product form. RLS mirrors `product_types` (global, staff write).
+  - `products.base_unit_price_cents` (nullable reference rate) and
+    `products.attributes jsonb not null default '{}'`.
+  - `v_price_intelligence` extended with `base_unit_price_cents` and a
+    read-time `discount_pct` — see Decisions below for why this isn't a
+    stored column.
+- Migration `20260724141040_create_product_function.sql`:
+  `create_product_with_prices()` — atomic product + price-point insert.
+  Same pattern as Day 2's `create_order()`: no `SECURITY DEFINER`, RLS
+  (`products_staff_write`/`prices_staff_write`) stays the real
+  authorization gate, the function's only job is atomicity.
+- `supabase/seed_attribute_schemas.sql` (new, DML — lives outside
+  `supabase/migrations/` like the other seed files) — 4 illustrative
+  attribute-schema rows (`edible`: dosage_mg, servings_per_package;
+  `vape-disposable`: device_type, battery_included), idempotent
+  (`on conflict ... do nothing`).
+- `src/lib/data/admin-products.ts` — added `getProductFormOptions()`
+  (product types, varieties, club-scoped tiers, attribute schemas).
+- `src/lib/actions/admin-products.ts` — added `createProduct()`, calling
+  the new RPC.
+- `src/components/admin/add-product-form.tsx` (new) — product type →
+  name → strain (variety) picker with read-only strain-type display →
+  cultivation/grade/potency → club tier → type-specific fields rendered
+  from `product_type_attribute_schemas` (text/number/boolean/select/
+  multiselect) → optional base unit rate → package builder (add/remove
+  price points, live client-side discount-vs-base preview per row) →
+  submit. Plain HTML controls styled with the existing design tokens,
+  matching `product-editor.tsx`'s established convention — no new shadcn
+  components or dependencies added.
+- `src/app/admin/products/page.tsx` — fetches `getProductFormOptions()`
+  alongside the existing product list, renders the new form above the
+  existing editor.
+
+**A real bug caught by real-session testing (not by me, and not new to
+Phase G):** submitting the Add Product form failed with `new row violates
+row-level security policy for table "price_history"`. `price_history` has
+RLS enabled with only a staff-only `SELECT` policy — no `INSERT` policy
+exists at all, on any table, for anyone. The trigger that populates it
+(`log_price_change()`, fires on every `product_prices` insert/update) runs
+with the privileges of the invoking role, not elevated privileges, so any
+authenticated-role write to `product_prices` was always going to hit this.
+This predates Phase G entirely — every `product_prices` row until this
+moment was written by seed scripts running as the service role (which
+bypasses RLS, including the trigger's insert), so it never surfaced. This
+was, literally, the first real end-to-end write this project has ever
+made through PostgREST/RLS with a genuine logged-in staff session rather
+than a seed script — Days 1 through 4 all explicitly deferred that exact
+kind of verification to "the founder's real session" and never closed the
+loop on it until now. Fixed in
+`supabase/migrations/20260726151100_fix_price_history_rls.sql`: marked
+`log_price_change()` `SECURITY DEFINER`, the same pattern already used by
+`app_current_club_id()`/`app_is_staff()` to bypass RLS for internal
+bookkeeping that isn't itself a direct user-facing write path.
+`price_history`'s own read policy (staff-only) is untouched and remains
+the real gate on who can query the history. This also unblocks the
+pre-existing price editor (`product-editor.tsx`'s `updatePriceCents`),
+which had the identical latent bug and had likewise never been exercised
+in a real session before.
+
+**Files touched:**
+- `supabase/migrations/20260724134952_catalogue_metadata_and_tiers.sql`,
+  `supabase/migrations/20260724141040_create_product_function.sql`,
+  `supabase/migrations/20260726151100_fix_price_history_rls.sql` (new)
+- `supabase/seed_attribute_schemas.sql` (new)
+- `src/lib/database.types.ts` (regenerated, twice — once per migration)
+- `src/lib/data/admin-products.ts`, `src/lib/actions/admin-products.ts`
+- `src/components/admin/add-product-form.tsx` (new)
+- `src/app/admin/products/page.tsx`
+- `docs/phase-g-catalogue-metadata.md` (the plan doc itself, added to the
+  repo — it existed only outside the repo when this session started)
+
+**Decisions made:**
+1. `product_prices`' quantity/weight columns confirmed live as
+   `sell_unit`/`sell_quantity` (matches `00000000000000_schema.sql`) —
+   the one thing the plan doc explicitly flagged as unconfirmed.
+2. The plan's `product_type_attribute_schemas.product_type_id FK` was
+   wrong — `product_types`' primary key is `code` (text), not a synthetic
+   `id`. Corrected to `product_type_code`, matching the existing
+   `products.product_type_code` convention. Caught by checking live
+   `information_schema`, not by re-reading the plan more carefully.
+3. `discount_pct` is **not** a stored/generated column. A generated
+   column can't reference another table's row (Postgres restriction), and
+   a trigger-based store would go stale the moment
+   `products.base_unit_price_cents` changes after price points already
+   exist. Computed at read time in `v_price_intelligence` instead — same
+   treatment `price_per_unit_cents` already gets, and directly matches
+   this project's own stated principle in `docs/HANDOFF.md`: "never store
+   a derived number that could be computed from source data."
+4. Effects are global only for v1 (no per-club override) — the plan's own
+   stated default, not overridden.
+5. No GIN index on `products.attributes` yet — same call Phase A made for
+   its own new columns; no real query pattern against it exists yet.
+6. Added `create_product_with_prices()` as a new migration rather than two
+   sequential `.insert()` calls from the Server Action — not explicitly
+   requested, but `product-editor.tsx` only edits price/stock on rows that
+   already exist, it has no "add a price point" UI, so a partial insert
+   (product lands, prices fail) would leave a genuinely stuck orphan
+   product with no way to fix it from the app. Tested directly against
+   live data (happy path + the empty-prices failure path) before any UI
+   was built on it, same discipline as every prior RPC.
+7. Added "product type" and "name" as required first fields even though
+   the plan's literal flow ("strain picker → core fields → tier picker →
+   type fields → package builder") didn't list either — both are
+   `not null` columns with no default; the form can't submit without them,
+   and type-specific fields can't render before the type is known.
+8. Left `brand_id`, `is_new_drop`, `is_staff_pick`, `description`, and
+   `image_url` out of the Add Product form — not in the plan's field
+   list, and `docs/HANDOFF.md` already separately scopes "full product
+   CRUD" as its own future item. Adding them here would be scope creep
+   past what either document asked for.
+9. Seeded 4 illustrative `product_type_attribute_schemas` rows via a new
+   DML file rather than leaving the table empty — makes the "form renders
+   itself from the schema" behavior something you can actually click
+   through and see (`edible`/`vape-disposable` fields appear, `flower`
+   doesn't), not just a structurally-correct table with nothing in it.
+   Not a full attribute taxonomy — four rows, chosen to match the plan
+   doc's own two examples.
+10. Worked on a new branch (`feature/phase-g-catalogue-metadata`, off
+    `main`) rather than reusing `sprint/mvp` or committing to `main`
+    directly — confirmed with the founder first, since `main` and
+    `sprint/mvp` were identical (already merged) and `docs/HANDOFF.md`
+    itself says to check before reusing either.
+11. `create_product_with_prices()`'s generated Supabase RPC arg types came
+    back non-nullable for every optional param (the same `supabase gen
+    types` gap Day 2's `create_order()` call hit). Day 2's fix — pass `""`
+    instead of `null` — doesn't generalize here: an empty string would
+    fail the `cultivation` CHECK constraint outright and fail uuid/numeric
+    parsing for the rest. Passed real `null` and overrode the incorrect
+    generated type via an explicit intermediate type + `unknown` cast,
+    documented inline, rather than corrupting the insert to satisfy the
+    type checker.
+
+**Deferred:**
+- No admin UI to create/browse effects or tag a variety's effects — those
+  are variety-level (see the plan doc's own reasoning), which is a future
+  variety editor, not something the Add Product form should own.
+- No admin UI to author `product_type_attribute_schemas` rows — only the
+  4 seeded examples exist; an admin authoring surface for these is future
+  work, same as the plan doc's own scoping implied.
+- No admin UI to create/rename/reorder `club_tiers` — the live club has
+  none yet, so the Add Product form's tier picker will show only the "no
+  tier" option until some exist.
+- Promotional/special pricing (`price_type`) — unrelated to this phase,
+  already flagged in Day 4's Known Gaps, still unaddressed.
+
+**Verified:**
+- Live schema confirmed via `information_schema`/`pg_get_viewdef` *before*
+  writing either migration — `product_prices` column shapes,
+  `product_types`' actual primary key, the live (Day-4-fixed)
+  `v_price_intelligence` definition, and no naming collisions with any of
+  the 4 new tables.
+- Both migrations dry-run (`supabase db push --dry-run`), shown to the
+  founder, explicitly confirmed, then pushed — not run unilaterally.
+- Post-push: all 4 new tables + 3 new `products` columns confirmed live
+  via `information_schema`; RLS confirmed enabled
+  (`pg_class.relrowsecurity = true`) on all 4 new tables.
+- Functional smoke test against live data: inserted a real effect,
+  variety_effect, club_tier, and attribute-schema row; set
+  `base_unit_price_cents = 15000` on a real seeded flower product (4 real
+  price points); `discount_pct` in `v_price_intelligence` matched a hand
+  calculation exactly (0%, 8.33%, 5.56%, 10.00%) — including a 2g row a
+  first, narrower query missed, caught by re-running without the `limit`.
+  All test data deleted afterward, re-queried to confirm zero leftovers.
+- `create_product_with_prices()` tested directly against live data before
+  any UI touched it: happy path (product + 2 price points + jsonb
+  attributes) landed correctly and matched on read-back; failure path
+  (empty `p_prices` array) correctly raised and wrote zero rows. Both
+  cleaned up, confirmed zero leftovers.
+- `pnpm tsc --noEmit` and `pnpm build` both clean; `/admin/products`
+  appears in the build's route table.
+- Dev server started via the project's own `daggadex-clubos` preview
+  config; logged-out request to `/admin/products` still correctly
+  redirects to `/login` with no console errors (regression check).
+- **Real click-through, done for real:** pushed the branch, opened
+  [PR #2](https://github.com/daggadex-oss/Daggadex-ClubOS-Lite/pull/2),
+  tested on its Vercel preview deploy in a genuine logged-in staff
+  session — the first phase in this project where that constraint
+  actually got closed instead of deferred again. Caught two real issues
+  live: the number-input min-bound UX gap (fixed, see below) and the
+  `price_history` RLS bug (see "A real bug..." above, fixed in a third
+  migration). After both fixes, added a real product ("POP POM" — flower,
+  Apple Slushie strain, indoor, AA grade, 25% THC concentration, R150
+  base rate, one price point at 1g/R89) through the actual form and
+  confirmed it end to end via live query: product row correct, price
+  point correct, and — the specific thing the RLS fix needed to prove —
+  a real `price_history` row was written by the authenticated session
+  itself, not just by a service-role script.
+- Also fixed, from the same live testing: number inputs
+  (`add-product-form.tsx`) had no `min` bound, so clicking the spinner
+  arrows on an empty field could step to a negative value. Client-side
+  validation and the DB `CHECK` constraints already rejected negative
+  submissions, so this was UX-only, not a data-integrity gap — fixed by
+  adding `min` to every numeric field.
+
+**Next phase starts with:** club_tiers/effects/attribute-schema authoring
+currently only exist via direct SQL — an admin surface for at least
+`club_tiers` (the Add Product form's tier picker is empty for every club
+until one exists) is the most immediately useful next piece. After that,
+Day 4's still-open promotional/special pricing gap — founder's call on
+priority. PR #2 is open against `main`, not yet merged.
+
+---
+
+### Addendum — club_tiers admin UI
+
+**Built:** `ClubTiersEditor` (`src/components/admin/club-tiers-editor.tsx`),
+wired into `/admin/products` above the Add Product form. Inline edit-on-
+blur for name/rank per tier (same pattern as `product-editor.tsx`), a
+"Remove" action with a confirm prompt (safe — `products.club_tier_id` is
+`on delete set null`, not cascade), and an add-tier row defaulting to the
+next unused rank. Plain single-table CRUD, no new migration — `club_tiers`
+already had full RLS (`club_tiers_read`/`club_tiers_staff_write`) covering
+select/insert/update/delete for staff of the club.
+
+**Files touched:**
+- `src/lib/data/admin-tiers.ts`, `src/lib/actions/admin-tiers.ts` (new)
+- `src/components/admin/club-tiers-editor.tsx` (new)
+- `src/app/admin/products/page.tsx` (fetches tiers, renders the editor)
+
+**Decisions made:**
+- New per-feature files (`admin-tiers.ts`) rather than folding into
+  `admin-products.ts` — matches this project's existing convention of one
+  data/action file per admin feature (`admin-orders.ts` vs
+  `admin-products.ts` are already separate despite both being "admin").
+- `router.refresh()` after every tier mutation — `ClubTiersEditor` and
+  `AddProductForm` are siblings fed by the same Server Component
+  (`page.tsx`), so a new/renamed tier needs to reach the Add Product
+  form's picker, not just its own local optimistic state.
+- Delete is a hard delete, not a soft/active toggle — unlike products
+  (which get an `active` flag because orders reference them historically),
+  nothing references `club_tiers` except `products.club_tier_id`, which is
+  `on delete set null`, so removing a tier can't orphan or corrupt
+  anything.
+
+**A real bug caught by real-session testing:** the founder created a tier
+through the live form — it correctly appeared in the Add Product form's
+tier picker, but the Club Tiers panel itself still said "No tiers yet."
+Root cause: both `ClubTiersEditor` and the pre-existing `ProductEditor`
+seed local state with `useState(initialProps)` once at mount; `AddProductForm`
+doesn't copy its `options` prop into state at all, so it always reflects
+whatever the Server Component last rendered — which is why the picker
+updated correctly while the tiers list (and, by the same root cause, a
+newly-added product in the "Existing products" list below) did not.
+`router.refresh()` re-fetches the Server Component and passes fresh props
+down, but a client component's own `useState` doesn't re-derive from a
+changed prop on re-render. Fixed two ways: `createClubTier()` now returns
+the inserted row so `ClubTiersEditor`'s own `handleAdd` can append it
+directly (matching how rename/rerank/delete already self-update), and
+`ProductEditor` is now keyed on product count in `page.tsx` so it remounts
+and picks up a product added by its sibling `AddProductForm`. Both
+confirmed fixed live: a third tier ("Excel") appeared immediately in its
+own panel, and "POP POM" was confirmed present in the Existing products
+list.
+
+**Deferred:** Nothing scoped in for this addendum. `effects`/
+`variety_effects` and `product_type_attribute_schemas` authoring are still
+SQL-only.
+
+**Verified:** `pnpm tsc --noEmit` and `pnpm build` clean, `/admin/products`
+still in the route table. Full real-session round trip confirmed live on
+the PR #2 preview: create/rename/reorder/delete all work, a new tier
+reaches the Add Product picker immediately, the tiers panel reflects its
+own additions immediately, and a newly-added product now shows up in the
+existing-products list without a manual page reload.
+
+**Next phase starts with:** `effects`/`variety_effects` and
+`product_type_attribute_schemas` authoring are still SQL-only — same
+priority call as before, founder's decision on whether that's next or
+Day 4's promotional/special pricing gap. PR #2 is open against `main`,
+not yet merged.

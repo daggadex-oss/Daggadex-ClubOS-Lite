@@ -191,6 +191,38 @@ export type Database = {
           },
         ]
       }
+      club_tiers: {
+        Row: {
+          club_id: string
+          created_at: string
+          id: string
+          name: string
+          rank: number
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          id?: string
+          name: string
+          rank: number
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          rank?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_tiers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clubs: {
         Row: {
           created_at: string
@@ -224,6 +256,24 @@ export type Database = {
           slug?: string
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      effects: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
         }
         Relationships: []
       }
@@ -363,6 +413,44 @@ export type Database = {
           },
         ]
       }
+      product_type_attribute_schemas: {
+        Row: {
+          attribute_key: string
+          id: string
+          input_type: string
+          label: string
+          options: Json | null
+          product_type_code: string
+          sort_order: number
+        }
+        Insert: {
+          attribute_key: string
+          id?: string
+          input_type: string
+          label: string
+          options?: Json | null
+          product_type_code: string
+          sort_order?: number
+        }
+        Update: {
+          attribute_key?: string
+          id?: string
+          input_type?: string
+          label?: string
+          options?: Json | null
+          product_type_code?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_type_attribute_schemas_product_type_code_fkey"
+            columns: ["product_type_code"]
+            isOneToOne: false
+            referencedRelation: "product_types"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       product_types: {
         Row: {
           code: string
@@ -390,8 +478,11 @@ export type Database = {
       products: {
         Row: {
           active: boolean
+          attributes: Json
+          base_unit_price_cents: number | null
           brand_id: string | null
           club_id: string
+          club_tier_id: string | null
           created_at: string
           cultivation: string | null
           description: string | null
@@ -412,8 +503,11 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          attributes?: Json
+          base_unit_price_cents?: number | null
           brand_id?: string | null
           club_id: string
+          club_tier_id?: string | null
           created_at?: string
           cultivation?: string | null
           description?: string | null
@@ -434,8 +528,11 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          attributes?: Json
+          base_unit_price_cents?: number | null
           brand_id?: string | null
           club_id?: string
+          club_tier_id?: string | null
           created_at?: string
           cultivation?: string | null
           description?: string | null
@@ -467,6 +564,13 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_club_tier_id_fkey"
+            columns: ["club_tier_id"]
+            isOneToOne: false
+            referencedRelation: "club_tiers"
             referencedColumns: ["id"]
           },
           {
@@ -521,11 +625,43 @@ export type Database = {
         }
         Relationships: []
       }
+      variety_effects: {
+        Row: {
+          effect_id: string
+          variety_id: string
+        }
+        Insert: {
+          effect_id: string
+          variety_id: string
+        }
+        Update: {
+          effect_id?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_effects_effect_id_fkey"
+            columns: ["effect_id"]
+            isOneToOne: false
+            referencedRelation: "effects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_effects_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "varieties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       v_price_intelligence: {
         Row: {
+          base_unit_price_cents: number | null
           club_id: string | null
+          discount_pct: number | null
           price_cents: number | null
           price_per_unit_cents: number | null
           product_name: string | null
@@ -557,6 +693,25 @@ export type Database = {
           p_delivery_zone: string
           p_items: Json
           p_member_id: string
+        }
+        Returns: string
+      }
+      create_product_with_prices: {
+        Args: {
+          p_attributes: Json
+          p_base_unit_price_cents: number
+          p_club_id: string
+          p_club_tier_id: string
+          p_cultivation: string
+          p_grade_declared: string
+          p_name: string
+          p_potency_amount: number
+          p_potency_basis: string
+          p_potency_compound: string
+          p_potency_unit: string
+          p_prices: Json
+          p_product_type_code: string
+          p_variety_id: string
         }
         Returns: string
       }
