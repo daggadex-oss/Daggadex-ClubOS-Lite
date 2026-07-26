@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { AdminClubTier } from "@/lib/data/admin-tiers";
 import { createClubTier, updateClubTier, deleteClubTier } from "@/lib/actions/admin-tiers";
 
-const fieldClass = "rounded-sm border border-sage/30 bg-base px-2 py-1 text-sm text-cream";
+const fieldClass =
+  "rounded-sm border-none bg-base px-2.5 py-1.5 text-sm text-cream focus:outline-none focus:ring-1 focus:ring-gold";
 
 function nextRank(list: AdminClubTier[]): number {
   return list.length ? Math.max(...list.map((t) => t.rank)) + 1 : 1;
@@ -107,7 +108,7 @@ export function ClubTiersEditor({
               <button
                 type="button"
                 onClick={() => handleDelete(tier.id)}
-                className="text-xs text-sage hover:text-wood"
+                className="font-display text-xs uppercase tracking-tight text-sage hover:text-wood"
               >
                 Remove
               </button>
@@ -137,7 +138,7 @@ export function ClubTiersEditor({
         <button
           type="submit"
           disabled={adding}
-          className="rounded-sm bg-gold px-3 py-1.5 text-sm font-medium text-base disabled:opacity-50"
+          className="rounded-sm bg-gold px-4 py-1.5 font-display text-xs uppercase tracking-tight text-base disabled:opacity-50"
         >
           {adding ? "Adding…" : "Add tier"}
         </button>

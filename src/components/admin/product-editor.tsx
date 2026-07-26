@@ -9,6 +9,21 @@ import {
   updateProductActive,
 } from "@/lib/actions/admin-products";
 
+const STOCK_LABEL: Record<string, string> = {
+  in_stock: "In stock",
+  low_stock: "Low stock",
+  out_of_stock: "Out of stock",
+};
+
+// Matches docs/design-tokens.md's documented Stock states table exactly:
+// in stock = normal, low stock = gold label, out of stock = reduced opacity
+// (not a colour) — the same treatment the member-facing menu already uses.
+function stockClass(status: string): string {
+  if (status === "low_stock") return "text-gold";
+  if (status === "out_of_stock") return "text-sage opacity-50";
+  return "text-sage";
+}
+
 export function ProductEditor({
   initialProducts,
 }: {
@@ -75,79 +90,119 @@ export function ProductEditor({
 
   return (
     <div>
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Filter by name…"
-        className="w-full max-w-sm rounded-sm border border-sage/30 bg-surface px-3 py-2 text-sm text-cream placeholder:text-sage/70"
-      />
+      <div className="flex items-center justify-between gap-4">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter by name…"
+          className="w-full max-w-sm rounded-sm border-none bg-base px-3 py-2 text-sm text-cream placeholder:text-sage/50 focus:outline-none focus:ring-1 focus:ring-gold"
+        />
+        <p className="shrink-0 text-xs text-sage">
+          {filtered.length} of {products.length} products
+        </p>
+      </div>
 
-      <p className="mt-2 text-xs text-sage">
-        {filtered.length} of {products.length} products
-      </p>
-
-      <div className="mt-2 space-y-1">
-        {filtered.map((product) => (
-          <div
-            key={product.id}
-            className={`rounded-sm border border-sage/20 bg-surface p-3 ${
-              product.active ? "" : "opacity-50"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-cream">
-                {product.name}
-              </span>
-              <label className="flex items-center gap-1.5 text-xs text-sage">
-                <input
-                  type="checkbox"
-                  checked={product.active}
-                  onChange={(e) =>
-                    handleActiveToggle(product.id, e.target.checked)
-                  }
-                />
+      <div className="mt-3 overflow-hidden rounded-sm border border-sage/20">
+        <table className="w-full border-collapse text-left">
+          <thead className="border-b border-sage/20 bg-base">
+            <tr>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
+                Name
+              </th>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
+                Strain
+              </th>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
+                Type
+              </th>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
+                Tier
+              </th>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
+                Price points
+              </th>
+              <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
                 Active
-              </label>
-            </div>
-
-            <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
-              {product.prices.map((price) => (
-                <div key={price.id} className="flex items-center gap-2 text-xs">
-                  <span className="w-16 shrink-0 text-sage">
-                    {sellUnitLabel(price.sell_unit, price.sell_quantity)}
-                  </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-sage/10">
+            {filtered.map((product) => (
+              <tr
+                key={product.id}
+                className={`bg-surface align-top hover:bg-surface/70 ${
+                  product.active ? "" : "opacity-50"
+                }`}
+              >
+                <td className="px-4 py-3 text-sm font-medium text-cream">
+                  {product.name}
+                </td>
+                <td className="px-4 py-3 text-sm text-sage">
+                  {product.variety?.name ?? "—"}
+                </td>
+                <td className="px-4 py-3">
+                  {product.product_type?.name && (
+                    <span className="rounded-sm border border-sage/40 px-2 py-0.5 text-[10px] font-bold uppercase text-sage">
+                      {product.product_type.name}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-gold">
+                  {product.club_tier?.name ?? "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="space-y-1.5">
+                    {product.prices.map((price) => (
+                      <div key={price.id} className="flex items-center gap-2 text-xs">
+                        <span className="w-14 shrink-0 text-sage">
+                          {sellUnitLabel(price.sell_unit, price.sell_quantity)}
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={(price.price_cents / 100).toFixed(2)}
+                          onBlur={(e) => {
+                            const rand = parseFloat(e.target.value);
+                            if (!Number.isNaN(rand)) {
+                              handlePriceChange(
+                                product.id,
+                                price.id,
+                                Math.round(rand * 100),
+                              );
+                            }
+                          }}
+                          className="w-20 rounded-sm border-none bg-base px-1.5 py-1 text-cream focus:outline-none focus:ring-1 focus:ring-gold"
+                        />
+                        <select
+                          value={price.stock_status}
+                          onChange={(e) =>
+                            handleStockChange(product.id, price.id, e.target.value)
+                          }
+                          className={`rounded-sm border-none bg-base px-1 py-1 ${stockClass(
+                            price.stock_status,
+                          )}`}
+                        >
+                          {Object.entries(STOCK_LABEL).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
                   <input
-                    type="number"
-                    step="0.01"
-                    defaultValue={(price.price_cents / 100).toFixed(2)}
-                    onBlur={(e) => {
-                      const rand = parseFloat(e.target.value);
-                      if (!Number.isNaN(rand)) {
-                        handlePriceChange(
-                          product.id,
-                          price.id,
-                          Math.round(rand * 100),
-                        );
-                      }
-                    }}
-                    className="w-20 rounded-sm border border-sage/30 bg-base px-1.5 py-0.5 text-cream"
+                    type="checkbox"
+                    checked={product.active}
+                    onChange={(e) => handleActiveToggle(product.id, e.target.checked)}
                   />
-                  <select
-                    value={price.stock_status}
-                    onChange={(e) =>
-                      handleStockChange(product.id, price.id, e.target.value)
-                    }
-                    className="rounded-sm border border-sage/30 bg-base px-1 py-0.5 text-cream"
-                  >
-                    <option value="in_stock">In stock</option>
-                    <option value="low_stock">Low stock</option>
-                    <option value="out_of_stock">Out of stock</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -12,6 +12,9 @@ export type AdminProduct = {
   id: string;
   name: string;
   active: boolean;
+  product_type: { name: string } | null;
+  variety: { name: string } | null;
+  club_tier: { name: string } | null;
   prices: AdminProductPrice[];
 };
 
@@ -22,12 +25,15 @@ export async function getAdminProducts(clubId: string): Promise<AdminProduct[]> 
     .from("products")
     .select(
       `id, name, active,
+       product_type:product_types(name),
+       variety:varieties(name),
+       club_tier:club_tiers(name),
        prices:product_prices(id, sell_unit, sell_quantity, price_cents, stock_status)`,
     )
     .eq("club_id", clubId)
     .order("name");
 
-  return data ?? [];
+  return (data ?? []) as unknown as AdminProduct[];
 }
 
 // --- Options for the schema-driven "Add Product" form (Phase G) -------------

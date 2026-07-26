@@ -17,15 +17,20 @@ export default async function AdminProductsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl uppercase tracking-tight text-cream">
-        Products
-      </h1>
-      <p className="mt-1 text-sm text-sage">
-        Edit prices, toggle stock, and turn products on or off the live menu.
-      </p>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl uppercase tracking-tight text-cream leading-none">
+            Product Inventory
+          </h1>
+          <p className="mt-2 text-sm text-sage">
+            Manage your current cultivation batches and price points.
+          </p>
+        </div>
+        <AddProductForm clubId={session.club.id} options={formOptions} />
+      </div>
 
-      <div className="mt-4">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-sage">
+      <div className="mt-8">
+        <h2 className="font-display text-xs uppercase tracking-wide text-sage">
           Club tiers
         </h2>
         <p className="mt-1 text-xs text-sage">
@@ -37,17 +42,8 @@ export default async function AdminProductsPage() {
         </div>
       </div>
 
-      <div className="mt-6">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-sage">
-          Add product
-        </h2>
-        <div className="mt-2">
-          <AddProductForm clubId={session.club.id} options={formOptions} />
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-sage">
+      <div className="mt-8">
+        <h2 className="font-display text-xs uppercase tracking-wide text-sage">
           Existing products
         </h2>
         <div className="mt-2">
