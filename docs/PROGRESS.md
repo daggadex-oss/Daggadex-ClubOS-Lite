@@ -987,19 +987,39 @@ select/insert/update/delete for staff of the club.
   `on delete set null`, so removing a tier can't orphan or corrupt
   anything.
 
+**A real bug caught by real-session testing:** the founder created a tier
+through the live form — it correctly appeared in the Add Product form's
+tier picker, but the Club Tiers panel itself still said "No tiers yet."
+Root cause: both `ClubTiersEditor` and the pre-existing `ProductEditor`
+seed local state with `useState(initialProps)` once at mount; `AddProductForm`
+doesn't copy its `options` prop into state at all, so it always reflects
+whatever the Server Component last rendered — which is why the picker
+updated correctly while the tiers list (and, by the same root cause, a
+newly-added product in the "Existing products" list below) did not.
+`router.refresh()` re-fetches the Server Component and passes fresh props
+down, but a client component's own `useState` doesn't re-derive from a
+changed prop on re-render. Fixed two ways: `createClubTier()` now returns
+the inserted row so `ClubTiersEditor`'s own `handleAdd` can append it
+directly (matching how rename/rerank/delete already self-update), and
+`ProductEditor` is now keyed on product count in `page.tsx` so it remounts
+and picks up a product added by its sibling `AddProductForm`. Both
+confirmed fixed live: a third tier ("Excel") appeared immediately in its
+own panel, and "POP POM" was confirmed present in the Existing products
+list.
+
 **Deferred:** Nothing scoped in for this addendum. `effects`/
 `variety_effects` and `product_type_attribute_schemas` authoring are still
 SQL-only.
 
 **Verified:** `pnpm tsc --noEmit` and `pnpm build` clean, `/admin/products`
-still in the route table. Confirmed live the club has zero `club_tiers`
-rows currently (so the editor's empty state is what actually renders,
-not a hypothetical). RLS itself isn't independently re-verified here —
-`club_tiers_staff_write` is structurally identical to
-`products_staff_write`/`prices_staff_write`, which the POP POM test above
-already proved work correctly in a real staff session.
+still in the route table. Full real-session round trip confirmed live on
+the PR #2 preview: create/rename/reorder/delete all work, a new tier
+reaches the Add Product picker immediately, the tiers panel reflects its
+own additions immediately, and a newly-added product now shows up in the
+existing-products list without a manual page reload.
 
-**Next phase starts with:** Founder tests tier creation/rename/reorder/
-delete for real on the PR #2 preview, then confirms a tier actually
-appears in and can be picked from the Add Product form's tier picker in
-the same session.
+**Next phase starts with:** `effects`/`variety_effects` and
+`product_type_attribute_schemas` authoring are still SQL-only — same
+priority call as before, founder's decision on whether that's next or
+Day 4's promotional/special pricing gap. PR #2 is open against `main`,
+not yet merged.
