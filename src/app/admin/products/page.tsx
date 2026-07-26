@@ -17,7 +17,7 @@ export default async function AdminProductsPage() {
 
   return (
     <div>
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl uppercase tracking-tight text-cream leading-none">
             Product Inventory

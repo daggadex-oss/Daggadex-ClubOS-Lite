@@ -102,8 +102,8 @@ export function ProductEditor({
         </p>
       </div>
 
-      <div className="mt-3 overflow-hidden rounded-sm border border-sage/20">
-        <table className="w-full border-collapse text-left">
+      <div className="mt-3 overflow-x-auto rounded-sm border border-sage/20">
+        <table className="w-full min-w-[720px] border-collapse text-left">
           <thead className="border-b border-sage/20 bg-base">
             <tr>
               <th className="px-4 py-3 font-display text-[11px] uppercase tracking-wide text-sage">
