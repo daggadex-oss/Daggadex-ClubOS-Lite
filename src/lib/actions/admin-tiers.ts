@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 type ActionResult = { success: true } | { error: string };
+type CreateTierResult = { success: true; tier: { id: string; name: string; rank: number } } | { error: string };
 
 // club_tiers already has full RLS (club_tiers_read / club_tiers_staff_write)
 // covering select/insert/update/delete for staff of the club, so this is
@@ -14,15 +15,17 @@ export async function createClubTier(
   clubId: string,
   name: string,
   rank: number,
-): Promise<ActionResult> {
+): Promise<CreateTierResult> {
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("club_tiers")
-    .insert({ club_id: clubId, name, rank });
+    .insert({ club_id: clubId, name, rank })
+    .select("id, name, rank")
+    .single();
 
   if (error) return { error: error.message };
   revalidatePath("/admin/products");
-  return { success: true };
+  return { success: true, tier: data };
 }
 
 export async function updateClubTier(

@@ -68,8 +68,10 @@ export function ClubTiersEditor({
       return;
     }
 
+    const updated = [...tiers, result.tier];
+    setTiers(updated);
     setNewName("");
-    setNewRank(nextRank([...tiers, { id: "", name, rank: newRank }]));
+    setNewRank(nextRank(updated));
     router.refresh();
   }
 

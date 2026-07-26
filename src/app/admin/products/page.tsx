@@ -51,7 +51,12 @@ export default async function AdminProductsPage() {
           Existing products
         </h2>
         <div className="mt-2">
-          <ProductEditor initialProducts={products} />
+          {/* keyed by count so a product added elsewhere on this page (Add
+              Product form triggers router.refresh(), not a mutation this
+              component makes itself) forces a remount and actually shows
+              up here, instead of staying stuck at this component's first
+              useState(initialProducts) snapshot */}
+          <ProductEditor key={products.length} initialProducts={products} />
         </div>
       </div>
     </div>
