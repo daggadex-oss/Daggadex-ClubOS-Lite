@@ -67,7 +67,7 @@ export default async function AdminDashboardPage() {
       )}
 
       <div className="mt-6 rounded-sm border border-sage/20 bg-surface p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xs font-medium uppercase tracking-wide text-sage">
             Orders per day
           </h2>
@@ -87,7 +87,7 @@ export default async function AdminDashboardPage() {
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-sm border border-sage/20 bg-surface p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xs font-medium uppercase tracking-wide text-sage">
               Top products by revenue
             </h2>
@@ -112,7 +112,7 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="rounded-sm border border-sage/20 bg-surface p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xs font-medium uppercase tracking-wide text-sage">
               Category split
             </h2>
@@ -138,7 +138,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="mt-4 rounded-sm border border-sage/20 bg-surface p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xs font-medium uppercase tracking-wide text-sage">
             Price per gram by cultivation tier — Flower
           </h2>
@@ -163,7 +163,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="mt-4 rounded-sm border border-sage/20 bg-surface p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xs font-medium uppercase tracking-wide text-sage">
             Order timing — hour × day of week (60 days)
           </h2>
